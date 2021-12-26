@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/K-Phoen/grabana/alertmanager"
 	builder "github.com/K-Phoen/grabana/dashboard"
 	"github.com/K-Phoen/grabana/datasource/prometheus"
 	"github.com/stretchr/testify/require"
@@ -533,4 +534,43 @@ func TestGetDatasourceUIDByNameReturnsASpecificErrorIfDatasourceIsNotFound(t *te
 	req.Error(err)
 	req.Equal(ErrDatasourceNotFound, err)
 	req.Empty(uid)
+}
+
+func TestConfigureAlertManager(t *testing.T) {
+	req := require.New(t)
+
+	endpointCalled := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		endpointCalled = true
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer ts.Close()
+
+	client := NewClient(http.DefaultClient, ts.URL)
+	manager := alertmanager.New()
+
+	err := client.ConfigureAlertManager(context.TODO(), manager)
+
+	req.NoError(err)
+	req.True(endpointCalled)
+}
+
+func TestConfigureAlertManagerForwardsErrorOnFailure(t *testing.T) {
+	req := require.New(t)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(w, `{
+  "message": "something when wrong"
+}`)
+	}))
+	defer ts.Close()
+
+	client := NewClient(http.DefaultClient, ts.URL)
+	manager := alertmanager.New()
+
+	err := client.ConfigureAlertManager(context.TODO(), manager)
+
+	req.Error(err)
+	req.Contains(err.Error(), "something when wrong")
 }
